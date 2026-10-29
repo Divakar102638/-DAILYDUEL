@@ -1,0 +1,66 @@
+name: daily_duel
+description: "DailyDuel - Challenge Yourself. Rise Every Day."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Icons
+  cupertino_icons: ^1.0.8
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Navigation
+  go_router: ^15.1.2
+
+  # Local Persistence
+  shared_preferences: ^2.3.5
+
+  # Internationalization
+  intl: ^0.20.2
+
+  # Charts
+  fl_chart: ^0.70.2
+
+  # Animations
+  lottie: ^3.3.1
+
+  # Image handling
+  cached_network_image: ^3.4.1
+
+  # Google Fonts
+  google_fonts: ^6.2.1
+
+  # Uuid generation
+  uuid: ^4.5.1
+
+  # Equatable for value equality
+  equatable: ^2.0.7
+
+  # Shimmer loading effect
+  shimmer: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.15
+  riverpod_generator: ^2.6.3
+  custom_lint: ^0.7.5
+  riverpod_lint: ^2.6.3
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/animations/
