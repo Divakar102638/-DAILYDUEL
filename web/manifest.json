@@ -1,11 +1,11 @@
 {
-    "name": "daily_duel",
-    "short_name": "daily_duel",
+    "name": "DailyDuel",
+    "short_name": "DailyDuel",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#050A20",
+    "theme_color": "#050A20",
+    "description": "DailyDuel - Challenge Yourself. Rise Every Day.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

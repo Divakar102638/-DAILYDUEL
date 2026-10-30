@@ -6,9 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:daily_duel/core/constants/app_colors.dart';
 import 'package:daily_duel/core/constants/app_constants.dart';
 import 'package:daily_duel/core/constants/app_strings.dart';
+import 'package:daily_duel/core/widgets/app_logo.dart';
 
 /// Premium animated splash screen for DailyDuel.
-/// Features a glowing animated lightning bolt, gradient branding,
+/// Features a glowing animated logo, gradient branding,
 /// pulsating loading indicator, and route determination via SharedPreferences.
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -148,7 +149,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
             children: [
               const Spacer(flex: 3),
 
-              // Animated Lightning Bolt Logo with Glow
+              // Animated DailyDuel Logo with Glow
               AnimatedBuilder(
                 animation: Listenable.merge([_logoController, _glowController]),
                 builder: (context, child) {
@@ -164,7 +165,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                         width: 120,
                         height: 120,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
+                          borderRadius: BorderRadius.circular(26),
                           boxShadow: [
                             // Outer violet/blue glow
                             BoxShadow(
@@ -182,27 +183,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                               spreadRadius: 2,
                             ),
                           ],
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFF263A6E), Color(0xFF16213D)],
-                          ),
-                          border: Border.all(
-                            color: AppColors.primaryBlue.withValues(alpha: 0.5),
-                            width: 2,
-                          ),
                         ),
-                        child: Center(
-                          child: ShaderMask(
-                            shaderCallback: (bounds) =>
-                                AppColors.primaryGradient.createShader(bounds),
-                            child: const Icon(
-                              Icons.bolt_rounded,
-                              size: 68,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
+                        child: const AppLogo(size: 120),
                       ),
                     ),
                   );

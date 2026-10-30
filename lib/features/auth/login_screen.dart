@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:daily_duel/core/constants/app_colors.dart';
 import 'package:daily_duel/core/constants/app_constants.dart';
 import 'package:daily_duel/core/constants/app_strings.dart';
+import 'package:daily_duel/core/widgets/app_logo.dart';
 import 'package:daily_duel/features/providers/providers.dart';
 
 /// Professional login screen for DailyDuel.
@@ -136,8 +137,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       width: 68,
                       height: 68,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: AppColors.primaryGradient,
+                        borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
                             color: AppColors.primaryBlue.withValues(
@@ -148,13 +148,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ],
                       ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.bolt_rounded,
-                          size: 42,
-                          color: Colors.white,
-                        ),
-                      ),
+                      child: const AppLogo(size: 68),
                     ),
                   ),
 

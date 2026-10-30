@@ -56,6 +56,7 @@ dev_dependencies:
   riverpod_generator: ^2.6.3
   custom_lint: ^0.7.5
   riverpod_lint: ^2.6.3
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
@@ -64,3 +65,24 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/animations/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/dailyduel_logo.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#050A20"
+  adaptive_icon_foreground: "assets/images/dailyduel_logo.png"
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: "assets/images/dailyduel_logo.png"
+    background_color: "#050A20"
+    theme_color: "#050A20"
+  windows:
+    generate: true
+    image_path: "assets/images/dailyduel_logo.png"
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: "assets/images/dailyduel_logo.png"

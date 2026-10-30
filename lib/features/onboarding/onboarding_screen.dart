@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:daily_duel/core/constants/app_colors.dart';
 import 'package:daily_duel/core/constants/app_constants.dart';
 import 'package:daily_duel/core/constants/app_strings.dart';
+import 'package:daily_duel/core/widgets/app_logo.dart';
 
 /// Three-step onboarding experience explaining the core value of DailyDuel:
 /// 1. Learn Daily
@@ -70,27 +71,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   // App Brand Mark
                   Row(
                     children: [
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: AppColors.primaryGradient,
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primaryBlue.withValues(
-                                alpha: 0.35,
-                              ),
-                              blurRadius: 10,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.bolt_rounded,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
+                      const AppLogo(size: 34),
                       const SizedBox(width: 10),
                       const Text(
                         AppStrings.appName,

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:daily_duel/core/constants/app_colors.dart';
 import 'package:daily_duel/core/constants/app_strings.dart';
+import 'package:daily_duel/core/widgets/app_logo.dart';
 import 'package:daily_duel/features/providers/providers.dart';
 
 /// Registration screen for new DailyDuel users.
@@ -124,6 +125,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const Center(child: AppLogo(size: 64)),
+                  const SizedBox(height: 20),
+
                   // Title & Subtitle
                   const Text(
                     AppStrings.signUp,
