@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/widgets/app_logo.dart';
 
 /// Complete Home Dashboard Screen for the DailyDuel Flutter App.
 /// Displays greeting, user stats summary, countdown to next reset,
@@ -288,29 +289,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.primaryBlue, AppColors.secondaryViolet],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryBlue.withValues(alpha: 0.35),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.bolt_rounded,
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
+          const AppLogo(size: 38),
           const SizedBox(width: 10),
           ShaderMask(
             shaderCallback: (bounds) => const LinearGradient(
