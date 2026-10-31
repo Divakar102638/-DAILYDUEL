@@ -97,10 +97,15 @@ unknown-app settings.
 
 ## Backend and data status
 
-No Firebase, Appwrite, Supabase, remote database, paid entry, or real-money
-prizes are used. Challenge definitions, leaderboard entries, and achievements
-include mock data; quiz attempts and preferences use local storage. Local demo
-rankings do not represent a shared competition.
+The Flutter app still uses local demo authentication and data; it does not
+connect to a remote database. A separate Express backend for verifying
+MongoDB Atlas connectivity is available in [backend/README.md](backend/README.md).
+The backend is not yet integrated with Flutter and does not migrate or store app
+features. No Firebase, Supabase, or Appwrite is used.
+
+Challenge definitions, leaderboard entries, and achievements include mock data;
+quiz attempts and preferences use local storage. Local demo rankings do not
+represent a shared competition.
 
 Authentication and registration are simulated. The coding challenge editor does
 not execute code. Admin quiz drafts are only retained for the current screen

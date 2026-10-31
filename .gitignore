@@ -56,3 +56,9 @@ app.*.map.json
 **/*.pfx
 **/*.pem
 **/secrets/**
+
+# Backend MongoDB credentials
+/backend/.env
+/backend/.env.*
+!/backend/.env.example
+/backend/node_modules/
