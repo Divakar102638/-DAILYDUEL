@@ -7,13 +7,16 @@ const {
 } = require('./db/mongo');
 
 async function startServer() {
-  const { host, port, uri } = loadConfig();
+  const { host, port, uri, corsOrigins, authTokenSecret } = loadConfig();
   await connectMongo(uri);
 
   let server;
   try {
     server = await new Promise((resolve, reject) => {
-      const appServer = createApp().listen(port, host, () => resolve(appServer));
+      const appServer = createApp({
+        allowedOrigins: corsOrigins,
+        authTokenSecret,
+      }).listen(port, host, () => resolve(appServer));
       appServer.once('error', reject);
     });
   } catch (error) {

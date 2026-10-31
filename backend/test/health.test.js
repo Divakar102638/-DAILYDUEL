@@ -1,7 +1,12 @@
 const assert = require('node:assert/strict');
 const { after, before, test } = require('node:test');
 const { createApp } = require('../src/app');
-const { getConnectionFailureReason } = require('../src/db/mongo');
+const {
+  connectMongo,
+  getConnectionFailureReason,
+  getDatabase,
+  getUsersCollection,
+} = require('../src/db/mongo');
 
 let server;
 let baseUrl;
@@ -126,4 +131,22 @@ test('MongoDB connection diagnostics identify missing database permissions', () 
   });
 
   assert.match(getConnectionFailureReason(error), /database user roles and permissions/i);
+});
+
+test('MongoDB database and users collection require an active connection', () => {
+  assert.throws(() => getDatabase(), /MongoDB is not connected/);
+  assert.throws(() => getUsersCollection(), /MongoDB is not connected/);
+});
+
+test('MongoDB initialization errors are sanitized without requiring DNS access', async () => {
+  await assert.rejects(
+    connectMongo('invalid-mongodb-connection-string'),
+    (error) => {
+      assert.match(error.message, /invalid connection string/i);
+      assert.equal(error.message.includes('invalid-mongodb-connection-string'), false);
+      assert.equal(getConnectionFailureReason(error), error.message);
+      return true;
+    },
+  );
+  assert.throws(() => getDatabase(), /MongoDB is not connected/);
 });

@@ -1,5 +1,8 @@
 const { MongoClient } = require('mongodb');
 
+const DATABASE_NAME = 'dailyduel';
+const USERS_COLLECTION_NAME = 'users';
+
 let client;
 
 function getConnectionFailureReason(error) {
@@ -97,7 +100,7 @@ async function connectMongo(uri) {
       serverSelectionTimeoutMS: 5000,
     });
     await nextClient.connect();
-    await nextClient.db('admin').command({ ping: 1 });
+    await nextClient.db(DATABASE_NAME).command({ ping: 1 });
     client = nextClient;
   } catch (error) {
     if (nextClient) {
@@ -120,7 +123,19 @@ async function pingMongo() {
     throw new Error('MongoDB is not connected.');
   }
 
-  await client.db('admin').command({ ping: 1 });
+  await getDatabase().command({ ping: 1 });
+}
+
+function getDatabase() {
+  if (!client) {
+    throw new Error('MongoDB is not connected.');
+  }
+
+  return client.db(DATABASE_NAME);
+}
+
+function getUsersCollection() {
+  return getDatabase().collection(USERS_COLLECTION_NAME);
 }
 
 async function closeMongo() {
@@ -135,6 +150,8 @@ async function closeMongo() {
 module.exports = {
   closeMongo,
   connectMongo,
+  getDatabase,
   getConnectionFailureReason,
+  getUsersCollection,
   pingMongo,
 };
