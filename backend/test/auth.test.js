@@ -118,6 +118,7 @@ test('registration stores a normalized user with an Argon2id hash and safe respo
   const collection = createUsersCollection();
   const { response } = await postRegistration(collection, {
     ...validRegistration,
+    role: 'admin',
     email: `  ${validRegistration.email.toUpperCase()}  `,
     username: `  ${validRegistration.username.toUpperCase()}  `,
   });
@@ -134,6 +135,7 @@ test('registration stores a normalized user with an Argon2id hash and safe respo
   assert.equal(collection.insertedUsers.length, 1);
   const [storedUser] = collection.insertedUsers;
   assert.equal(storedUser.email, validRegistration.email.toLowerCase());
+  assert.equal(storedUser.role, 'user');
   assert.notEqual(storedUser.passwordHash, validRegistration.password);
   assert.equal(
     await argon2.verify(storedUser.passwordHash, validRegistration.password),
@@ -198,6 +200,32 @@ test('login rejects a wrong password with the same safe response', async () => {
   });
 });
 
+test('disabled users cannot log in', async () => {
+  const user = {
+    _id: new ObjectId(),
+    fullName: 'Disabled User',
+    username: 'disabled_user',
+    email: 'disabled@example.test',
+    passwordHash: '$argon2id$stored-hash',
+    disabled: true,
+  };
+  const collection = createUsersCollection();
+  collection.findOne = async () => user;
+  const { response } = await postLogin(
+    collection,
+    { email: user.email, password: 'correct password' },
+    { verifyPassword: async () => true },
+  );
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), {
+    error: {
+      code: 'INVALID_CREDENTIALS',
+      message: 'Invalid email or password.',
+    },
+  });
+});
+
 test('login database failures return a generic error without internal details', async () => {
   const collection = createUsersCollection();
   collection.findOne = async () => {
@@ -240,6 +268,7 @@ test('login verifies Argon2id and returns a short-lived signed token without the
     fullName: user.fullName,
     username: user.username,
     email: user.email,
+    role: 'user',
   });
   assert.equal(JSON.stringify(body).includes('passwordHash'), false);
   const claims = jwt.verify(body.token, testTokenSecret, {
@@ -315,6 +344,7 @@ test('session endpoint requires and verifies a bearer token against MongoDB', as
       fullName: user.fullName,
       username: user.username,
       email: user.email,
+      role: 'user',
     },
   });
 

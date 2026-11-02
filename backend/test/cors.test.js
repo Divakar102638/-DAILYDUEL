@@ -38,15 +38,15 @@ test('configured web origins receive restrictive CORS headers', async () => {
   assert.match(response.headers.get('vary'), /Origin/i);
 });
 
-test('CORS preflight allows only the configured origin', async () => {
-  const origin = 'https://app.example.test';
+test('CORS preflight permits the admin portal auth headers and write methods', async () => {
+  const origin = 'https://dailyduel-admin.onrender.com';
   const baseUrl = await startTestServer([origin]);
-  const response = await fetch(`${baseUrl}/api/v1/auth/register`, {
+  const response = await fetch(`${baseUrl}/api/v1/auth/session`, {
     method: 'OPTIONS',
     headers: {
       Origin: origin,
-      'Access-Control-Request-Method': 'POST',
-      'Access-Control-Request-Headers': 'content-type',
+      'Access-Control-Request-Method': 'GET',
+      'Access-Control-Request-Headers': 'authorization',
     },
   });
 
@@ -54,7 +54,11 @@ test('CORS preflight allows only the configured origin', async () => {
   assert.equal(response.headers.get('access-control-allow-origin'), origin);
   assert.equal(
     response.headers.get('access-control-allow-methods'),
-    'GET, POST, OPTIONS',
+    'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+  );
+  assert.equal(
+    response.headers.get('access-control-allow-headers'),
+    'Accept, Authorization, Content-Type',
   );
 });
 

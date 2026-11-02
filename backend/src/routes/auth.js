@@ -2,8 +2,12 @@ const argon2 = require('argon2');
 const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
-const { ObjectId } = require('mongodb');
 const { getUsersCollection } = require('../db/mongo');
+const {
+  createAuthMiddleware,
+  isAccountDisabled,
+  toSafeUser,
+} = require('../middleware/auth');
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const usernamePattern = /^[a-z0-9_]{3,20}$/;
@@ -19,6 +23,10 @@ function createAuthRouter({
   loginLimiter = createLoginLimiter(),
 } = {}) {
   const router = express.Router();
+  const authenticate = createAuthMiddleware({
+    usersCollection,
+    authTokenSecret,
+  });
   let indexesPromise;
 
   async function ensureUserIndexes(collection) {
@@ -226,6 +234,7 @@ function createAuthRouter({
 
       if (
         user &&
+        !isAccountDisabled(user) &&
         typeof user.passwordHash === 'string' &&
         user.passwordHash.startsWith('$argon2id$')
       ) {
@@ -269,72 +278,8 @@ function createAuthRouter({
     },
   );
 
-  router.get('/session', async (request, response, next) => {
-    if (!authTokenSecret) {
-      response.status(401).json({
-        error: {
-          code: 'UNAUTHENTICATED',
-          message: 'A valid login session is required.',
-        },
-      });
-      return;
-    }
-
-    const authorization = request.get('Authorization') || '';
-    const tokenMatch = /^Bearer ([^\s]+)$/.exec(authorization);
-    if (!tokenMatch) {
-      response.status(401).json({
-        error: {
-          code: 'UNAUTHENTICATED',
-          message: 'A valid login session is required.',
-        },
-      });
-      return;
-    }
-
-    let subject;
-    try {
-      const payload = jwt.verify(tokenMatch[1], authTokenSecret, {
-        algorithms: ['HS256'],
-        audience: 'dailyduel-app',
-        issuer: 'dailyduel-api',
-      });
-      if (
-        !payload ||
-        typeof payload === 'string' ||
-        typeof payload.sub !== 'string' ||
-        !ObjectId.isValid(payload.sub)
-      ) {
-        throw new jwt.JsonWebTokenError('Invalid subject.');
-      }
-      subject = new ObjectId(payload.sub);
-    } catch {
-      response.status(401).json({
-        error: {
-          code: 'UNAUTHENTICATED',
-          message: 'A valid login session is required.',
-        },
-      });
-      return;
-    }
-
-    try {
-      const user = await usersCollection().findOne({ _id: subject });
-      const safeUser = user && toSafeUser(user);
-      if (!safeUser) {
-        response.status(401).json({
-          error: {
-            code: 'UNAUTHENTICATED',
-            message: 'A valid login session is required.',
-          },
-        });
-        return;
-      }
-
-      response.status(200).json({ user: safeUser });
-    } catch (error) {
-      next(error);
-    }
+  router.get('/session', authenticate, (request, response) => {
+    response.status(200).json({ user: request.authenticatedUser });
   });
 
   return router;
@@ -378,24 +323,6 @@ function createLoginLimiter({
       });
     },
   });
-}
-
-function toSafeUser(user) {
-  if (
-    !user._id ||
-    typeof user.fullName !== 'string' ||
-    typeof user.username !== 'string' ||
-    typeof user.email !== 'string'
-  ) {
-    return null;
-  }
-
-  return {
-    id: user._id.toString(),
-    fullName: user.fullName,
-    username: user.username,
-    email: user.email,
-  };
 }
 
 module.exports = {

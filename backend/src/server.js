@@ -3,8 +3,10 @@ const { loadConfig } = require('./config');
 const {
   closeMongo,
   connectMongo,
+  getDatabase,
   getConnectionFailureReason,
 } = require('./db/mongo');
+const { processDueExamResults } = require('./quiz/exam-processor');
 
 async function startServer() {
   const { host, port, uri, corsOrigins, authTokenSecret } = loadConfig();
@@ -26,12 +28,24 @@ async function startServer() {
 
   console.log(`DailyDuel backend listening at http://${host}:${port}`);
 
+  const processExams = () =>
+    processDueExamResults({
+      getCollection: (name) => getDatabase().collection(name),
+    })
+      .catch(() => {
+        console.error('Scheduled exam result processing failed.');
+      });
+  const examProcessor = setInterval(processExams, 10_000);
+  examProcessor.unref();
+  void processExams();
+
   let isClosing = false;
   const shutdown = () => {
     if (isClosing) {
       return;
     }
     isClosing = true;
+    clearInterval(examProcessor);
 
     server.close(async () => {
       try {
