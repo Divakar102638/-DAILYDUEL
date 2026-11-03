@@ -6,6 +6,22 @@ export interface AdminUser {
   role: 'admin';
 }
 
+export interface AdminSetupInput {
+  fullName: string;
+  username: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  setupSecret: string;
+}
+
+export interface AdminCredentialUpdate {
+  currentPassword: string;
+  email?: string;
+  newPassword?: string;
+  confirmPassword?: string;
+}
+
 export interface AdminStudent {
   id: string;
   fullName: string;

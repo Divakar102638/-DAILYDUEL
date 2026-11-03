@@ -29,7 +29,11 @@ function errorHandler(error, request, response, _next) {
     return;
   }
 
-  const status = Number.isInteger(error.status) ? error.status : 500;
+  const status = Number.isInteger(error.status) &&
+      error.status >= 400 &&
+      error.status <= 599
+    ? error.status
+    : 500;
   if (status >= 500) {
     console.error('Request failed.', {
       method: request.method,
@@ -39,12 +43,11 @@ function errorHandler(error, request, response, _next) {
 
   response.status(status).json({
     error: {
-      message:
-        status === 503
-          ? 'Database is unavailable.'
-          : status >= 500
-            ? 'An unexpected server error occurred.'
-            : error.message,
+      message: status === 503
+        ? 'Database is unavailable.'
+        : status >= 500
+          ? 'An unexpected server error occurred.'
+          : 'The request could not be completed.',
     },
   });
 }

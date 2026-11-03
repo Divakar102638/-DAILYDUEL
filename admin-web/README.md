@@ -36,10 +36,16 @@ Restart the local backend after changing its local configuration. The admin
 portal uses the existing local API and never connects directly to MongoDB.
 No credentials or API tokens belong in `VITE_` variables.
 
-Sign in with an existing administrator account. The website first verifies
-the login token through `GET /api/v1/auth/session` and
-`GET /api/v1/admin/access`. Tokens are held in `sessionStorage` for the
-current browser tab to remain compatible with the existing bearer-token API.
+When the backend reports that first-admin setup is available, the login page
+shows a setup form. Setup requires a one-time secret entered by an authorized
+operator; configure only its SHA-256 hash in the trusted backend environment.
+The secret is sent only in the HTTPS setup request and is never embedded in
+the frontend bundle. The backend permanently disables setup after an admin or
+bootstrap marker exists. Once initialized, sign in with the created admin
+account. The website verifies the login token through
+`GET /api/v1/auth/session` and `GET /api/v1/admin/access`. Tokens are held in
+`sessionStorage` for the current browser tab to remain compatible with the
+existing bearer-token API.
 This is not equivalent to an HttpOnly cookie; protect the portal from XSS and
 serve it only over HTTPS outside local development. The backend remains the
 authorization boundary for every administrator operation.

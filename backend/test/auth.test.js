@@ -229,7 +229,10 @@ test('disabled users cannot log in', async () => {
 test('login database failures return a generic error without internal details', async () => {
   const collection = createUsersCollection();
   collection.findOne = async () => {
-    throw new Error('private database connection detail');
+    throw Object.assign(
+      new Error('private database connection detail'),
+      { code: 'PRIVATE_INTERNAL_CODE' },
+    );
   };
   const { response } = await postLogin(collection, {
     email: 'registered@example.test',
@@ -240,6 +243,8 @@ test('login database failures return a generic error without internal details', 
   assert.equal(response.status, 500);
   assert.equal(body.error.message, 'An unexpected server error occurred.');
   assert.equal(JSON.stringify(body).includes('private database'), false);
+  assert.equal(JSON.stringify(body).includes('PRIVATE_INTERNAL_CODE'), false);
+  assert.equal(JSON.stringify(body).includes('stack'), false);
 });
 
 test('login verifies Argon2id and returns a short-lived signed token without the hash', async () => {
@@ -359,6 +364,50 @@ test('session endpoint requires and verifies a bearer token against MongoDB', as
     headers: { authorization: `Bearer ${expiredToken}` },
   });
   assert.equal(expired.status, 401);
+});
+
+test('legacy tokens use session version zero and stale versions are rejected', async () => {
+  const user = {
+    _id: new ObjectId(),
+    fullName: 'Versioned User',
+    username: 'versioned_user',
+    email: 'versioned@example.test',
+    passwordHash: 'never-returned',
+    sessionVersion: 1,
+  };
+  const collection = createUsersCollection();
+  collection.findOne = async () => user;
+  const server = createApp({
+    checkDatabase: async () => {},
+    usersCollection: () => collection,
+    authTokenSecret: testTokenSecret,
+  }).listen(0, '127.0.0.1');
+  servers.add(server);
+  await new Promise((resolve) => server.once('listening', resolve));
+  const url = `http://127.0.0.1:${server.address().port}/api/v1/auth/session`;
+  const staleToken = jwt.sign({}, testTokenSecret, {
+    algorithm: 'HS256',
+    audience: 'dailyduel-app',
+    expiresIn: '1h',
+    issuer: 'dailyduel-api',
+    subject: user._id.toString(),
+  });
+  const currentToken = jwt.sign({ sv: 1 }, testTokenSecret, {
+    algorithm: 'HS256',
+    audience: 'dailyduel-app',
+    expiresIn: '1h',
+    issuer: 'dailyduel-api',
+    subject: user._id.toString(),
+  });
+
+  const stale = await fetch(url, {
+    headers: { authorization: `Bearer ${staleToken}` },
+  });
+  const current = await fetch(url, {
+    headers: { authorization: `Bearer ${currentToken}` },
+  });
+  assert.equal(stale.status, 401);
+  assert.equal(current.status, 200);
 });
 
 test('registration rejects invalid fields before database writes', async () => {

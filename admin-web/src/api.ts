@@ -1,7 +1,9 @@
 import type {
   AdminExam,
   AdminQuestion,
+  AdminCredentialUpdate,
   AdminStudent,
+  AdminSetupInput,
   AdminUser,
   Category,
   ExamResult,
@@ -19,16 +21,19 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
 
+  readonly endpoint?: string;
   constructor(
     message: string,
     status: number,
     code?: string,
   ) {
+    endpoint?: string,
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
   }
+    this.endpoint = endpoint;
 }
 
 interface ApiErrorBody {
@@ -78,7 +83,12 @@ export class DailyDuelApi {
         ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
       });
     } catch {
-      throw new ApiError('Could not reach the DailyDuel API. Check the backend and local CORS configuration.', 0);
+      throw new ApiError(
+        'Could not reach the DailyDuel API. Check the backend and local CORS configuration.',
+        0,
+        'NETWORK_ERROR',
+        path,
+      );
     }
 
     const payload = await response.json().catch(() => null) as ApiErrorBody | null;
@@ -95,7 +105,7 @@ export class DailyDuelApi {
           ? 'Your session has expired. Sign in again.'
           : 'The request could not be completed.';
       const code = typeof payload?.error?.code === 'string' ? payload.error.code : undefined;
-      throw new ApiError(message, response.status, code);
+      throw new ApiError(message, response.status, code, path);
     }
     return payload as T;
   }
@@ -106,14 +116,24 @@ export class DailyDuelApi {
       { method: 'POST', body: { email, password }, token: null },
     );
     if (typeof session.token !== 'string' || !session.token) {
-      throw new ApiError('The API returned an invalid login response.', 502);
+      throw new ApiError(
+        'The API returned an invalid login response.',
+        502,
+        'INVALID_LOGIN_RESPONSE',
+        '/api/v1/auth/login',
+      );
     }
 
     this.setSessionToken(session.token);
     try {
       const verified = await this.request<{ user: AdminUser }>('/api/v1/auth/session');
       if (verified.user?.role !== 'admin') {
-        throw new ApiError('Administrator access is required.', 403);
+        throw new ApiError(
+          'Administrator access is required.',
+          403,
+          'ADMIN_REQUIRED',
+          '/api/v1/auth/session',
+        );
       }
       await this.request<{ authorized: true }>('/api/v1/admin/access');
       return verified.user;
@@ -124,6 +144,38 @@ export class DailyDuelApi {
   }
 
   async restoreAdminSession(): Promise<AdminUser | null> {
+  async adminSetupAvailable() {
+    const result = await this.request<{ setupAvailable: boolean }>(
+      '/api/v1/auth/admin-setup/status',
+      { token: null },
+    );
+    return result.setupAvailable === true;
+  }
+
+  async createFirstAdmin(input: AdminSetupInput) {
+    return this.request<{ initialized: true }>(
+      '/api/v1/auth/admin-setup',
+      { method: 'POST', body: input, token: null },
+    );
+  }
+
+  async updateAdminCredentials(input: AdminCredentialUpdate) {
+    const result = await this.request<{ token: string; user: AdminUser }>(
+      '/api/v1/auth/account/credentials',
+      { method: 'PATCH', body: input },
+    );
+    if (typeof result.token !== 'string' || !result.token) {
+      throw new ApiError(
+        'The API returned an invalid account update response.',
+        502,
+        'INVALID_CREDENTIAL_UPDATE_RESPONSE',
+        '/api/v1/auth/account/credentials',
+      );
+    }
+    this.setSessionToken(result.token);
+    return { user: result.user };
+  }
+
     if (!this.readStoredToken()) return null;
     try {
       const session = await this.request<{ user: AdminUser }>('/api/v1/auth/session');

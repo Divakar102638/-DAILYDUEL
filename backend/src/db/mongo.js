@@ -134,6 +134,14 @@ function getDatabase() {
   return client.db(DATABASE_NAME);
 }
 
+function getMongoClient() {
+  if (!client) {
+    throw new Error('MongoDB is not connected.');
+  }
+
+  return client;
+}
+
 function getUsersCollection() {
   return getDatabase().collection(USERS_COLLECTION_NAME);
 }
@@ -153,5 +161,6 @@ module.exports = {
   getDatabase,
   getConnectionFailureReason,
   getUsersCollection,
+  getMongoClient,
   pingMongo,
 };

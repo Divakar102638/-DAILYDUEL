@@ -15,6 +15,35 @@ afterEach(() => {
 });
 
 describe('DailyDuel admin API authentication', () => {
+  it('checks setup availability and submits setup credentials only to the API', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith('/admin-setup/status')) {
+        return response({ setupAvailable: true });
+      }
+      return response({ initialized: true }, 201);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new DailyDuelApi();
+
+    expect(await client.adminSetupAvailable()).toBe(true);
+    await client.createFirstAdmin({
+      fullName: 'Test Admin',
+      username: 'test_admin',
+      email: 'admin@example.test',
+      password: 'a-private-test-password',
+      confirmPassword: 'a-private-test-password',
+      setupSecret: 'private-test-one-time-secret',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const statusRequest = fetchMock.mock.calls[0]?.[1];
+    const setupRequest = fetchMock.mock.calls[1]?.[1];
+    expect(statusRequest).toBeDefined();
+    expect(setupRequest?.method).toBe('POST');
+    expect(new Headers(statusRequest?.headers).has('Authorization')).toBe(false);
+  });
+
   it('stores a tab-scoped token only after backend session and admin checks succeed', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const path = new URL(String(input)).pathname;
@@ -67,5 +96,44 @@ describe('DailyDuel admin API authentication', () => {
       message: 'A valid login session is required.',
     });
     await expect(client.get('/api/v1/admin/access')).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('clears the tab-scoped session when signing out', async () => {
+    const client = new DailyDuelApi();
+    client.setSessionToken('test-token');
+
+    await client.logout();
+
+    expect(client.hasSessionToken).toBe(false);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it('sends credential updates using the authenticated admin session', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe('PATCH');
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer admin-session-token');
+      return response({
+        token: 'rotated-admin-session-token',
+        user: {
+          id: 'admin-1',
+          fullName: 'Admin User',
+          username: 'admin',
+          email: 'new-admin@example.test',
+          role: 'admin',
+        },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new DailyDuelApi();
+    client.setSessionToken('admin-session-token');
+
+    const result = await client.updateAdminCredentials({
+      currentPassword: 'private-current-password',
+      email: 'new-admin@example.test',
+    });
+
+    expect(result.user.email).toBe('new-admin@example.test');
+    expect(client.getSessionToken()).toBe('rotated-admin-session-token');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

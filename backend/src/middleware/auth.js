@@ -37,6 +37,13 @@ function isAccountDisabled(user) {
   );
 }
 
+function getSessionVersion(user) {
+  if (user.sessionVersion === undefined) return 0;
+  return Number.isSafeInteger(user.sessionVersion) && user.sessionVersion >= 0
+    ? user.sessionVersion
+    : null;
+}
+
 function createAuthMiddleware({
   usersCollection = getUsersCollection,
   authTokenSecret = process.env.AUTH_TOKEN_SECRET,
@@ -55,6 +62,7 @@ function createAuthMiddleware({
     }
 
     let subject;
+    let tokenSessionVersion;
     try {
       const payload = jwt.verify(tokenMatch[1], authTokenSecret, {
         algorithms: ['HS256'],
@@ -65,12 +73,15 @@ function createAuthMiddleware({
         !payload ||
         typeof payload === 'string' ||
         typeof payload.sub !== 'string' ||
-        !ObjectId.isValid(payload.sub)
+        !ObjectId.isValid(payload.sub) ||
+        (payload.sv !== undefined &&
+          (!Number.isSafeInteger(payload.sv) || payload.sv < 0))
       ) {
         response.status(401).json({ error: authenticationError });
         return;
       }
       subject = new ObjectId(payload.sub);
+      tokenSessionVersion = payload.sv ?? 0;
     } catch {
       response.status(401).json({ error: authenticationError });
       return;
@@ -78,14 +89,21 @@ function createAuthMiddleware({
 
     try {
       const user = await usersCollection().findOne({ _id: subject });
+      const currentSessionVersion = user ? getSessionVersion(user) : null;
       const safeUser =
-        user && !isAccountDisabled(user) ? toSafeUser(user) : null;
+        user &&
+        !isAccountDisabled(user) &&
+        currentSessionVersion !== null &&
+        currentSessionVersion === tokenSessionVersion
+          ? toSafeUser(user)
+          : null;
       if (!safeUser) {
         response.status(401).json({ error: authenticationError });
         return;
       }
 
       request.authenticatedUser = safeUser;
+      request.authenticatedSessionVersion = currentSessionVersion;
       next();
     } catch (error) {
       next(error);
@@ -114,6 +132,7 @@ function requireAdmin(request, response, next) {
 
 module.exports = {
   createAuthMiddleware,
+  getSessionVersion,
   isAccountDisabled,
   requireAdmin,
   toSafeUser,

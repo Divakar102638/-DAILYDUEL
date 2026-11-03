@@ -1,5 +1,5 @@
 const express = require('express');
-const { getDatabase, pingMongo } = require('./db/mongo');
+const { getDatabase, getMongoClient, pingMongo } = require('./db/mongo');
 const { createCorsMiddleware } = require('./middleware/cors');
 const { createAuthRouter } = require('./routes/auth');
 const { createAdminRouter } = require('./routes/admin');
@@ -13,12 +13,16 @@ function createApp({
   checkDatabase = pingMongo,
   allowedOrigins = [],
   authTokenSecret = process.env.AUTH_TOKEN_SECRET,
+  adminBootstrapSecretHash = process.env.ADMIN_BOOTSTRAP_SECRET_HASH,
   usersCollection,
   hashPassword,
   verifyPassword,
   registrationLimiter,
   loginLimiter,
+  adminSetupLimiter,
+  adminCredentialLimiter,
   database = getDatabase,
+  mongoClient = getMongoClient,
   now = () => new Date(),
 } = {}) {
   const app = express();
@@ -35,8 +39,13 @@ function createApp({
       hashPassword,
       verifyPassword,
       authTokenSecret,
+      adminBootstrapSecretHash,
       registrationLimiter,
       loginLimiter,
+      adminSetupLimiter,
+      adminCredentialLimiter,
+      database,
+      mongoClient,
     }),
   );
   app.use(

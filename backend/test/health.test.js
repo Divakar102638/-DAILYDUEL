@@ -72,7 +72,7 @@ test('unknown health checks are rejected by request validation', async () => {
 
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {
-    error: { message: 'Unsupported health check.' },
+    error: { message: 'The request could not be completed.' },
   });
 });
 

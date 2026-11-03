@@ -1,11 +1,15 @@
 import { createContext, useContext } from 'react';
-import type { AdminUser } from './types';
+import type { AdminCredentialUpdate, AdminSetupInput, AdminUser } from './types';
 
 export interface AuthContextValue {
   user: AdminUser | null;
   loading: boolean;
   error: string | null;
+  setupAvailable: boolean;
+  setupError: string | null;
   signIn(email: string, password: string): Promise<void>;
+  createAdminAccount(input: AdminSetupInput): Promise<void>;
+  updateAdminCredentials(input: AdminCredentialUpdate): Promise<void>;
   signOut(): Promise<void>;
 }
 
