@@ -20,20 +20,20 @@ export const apiBaseUrl = (configuredBaseUrl || defaultBaseUrl).replace(/\/+$/, 
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
-
   readonly endpoint?: string;
+
   constructor(
     message: string,
     status: number,
     code?: string,
-  ) {
     endpoint?: string,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
-  }
     this.endpoint = endpoint;
+  }
 }
 
 interface ApiErrorBody {
@@ -143,7 +143,6 @@ export class DailyDuelApi {
     }
   }
 
-  async restoreAdminSession(): Promise<AdminUser | null> {
   async adminSetupAvailable() {
     const result = await this.request<{ setupAvailable: boolean }>(
       '/api/v1/auth/admin-setup/status',
@@ -176,6 +175,7 @@ export class DailyDuelApi {
     return { user: result.user };
   }
 
+  async restoreAdminSession(): Promise<AdminUser | null> {
     if (!this.readStoredToken()) return null;
     try {
       const session = await this.request<{ user: AdminUser }>('/api/v1/auth/session');
