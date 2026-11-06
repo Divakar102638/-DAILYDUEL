@@ -210,6 +210,31 @@ test('Gemini generator requests JSON output and validates fifteen questions', as
   assert.equal(JSON.stringify(logs).includes('private-test-gemini-api-key'), false);
 });
 
+test('Gemini generator uses the supported default model when no override is given', async () => {
+  const category = AI_CATEGORIES.find((item) => item.id === 'sports');
+  let requestedModel;
+  const generator = createGeminiQuestionGenerator({
+    apiKey: 'private-test-gemini-api-key-that-must-not-be-logged',
+    client: {
+      models: {
+        generateContent: async (request) => {
+          requestedModel = request.model;
+          return {
+            text: JSON.stringify({
+              questions: [providerQuestion(0, category.label)],
+            }),
+          };
+        },
+      },
+    },
+    logger: { info() {}, warn() {} },
+  });
+
+  await generator({ categoryId: 'sports', count: 1 });
+
+  assert.equal(requestedModel, 'gemini-3.5-flash-lite');
+});
+
 test('Gemini generator rejects invalid counts and maps provider failures safely', async () => {
   const category = AI_CATEGORIES.find((item) => item.id === 'cinema');
   const invalidOutput = createGeminiQuestionGenerator({
@@ -271,16 +296,20 @@ test('Gemini generation reports missing configuration without making a request',
 test('configured generator prefers Gemini when both provider keys are present', async () => {
   const category = AI_CATEGORIES.find((item) => item.id === 'sports');
   let openAiCalls = 0;
+  let geminiRequestedModel;
   const generate = createConfiguredQuestionGenerator({
     geminiApiKey: 'private-test-gemini-api-key-that-must-not-be-logged',
     geminiModel: 'gemini-test-model',
     geminiClient: {
       models: {
-        generateContent: async () => ({
-          text: JSON.stringify({
-            questions: [providerQuestion(0, category.label)],
-          }),
-        }),
+        generateContent: async (request) => {
+          geminiRequestedModel = request.model;
+          return {
+            text: JSON.stringify({
+              questions: [providerQuestion(0, category.label)],
+            }),
+          };
+        },
       },
     },
     openAiApiKey: 'private-test-openai-api-key-that-must-not-be-logged',
@@ -303,5 +332,6 @@ test('configured generator prefers Gemini when both provider keys are present', 
 
   assert.equal(result.provider, 'gemini');
   assert.equal(result.questions.length, 1);
+  assert.equal(geminiRequestedModel, 'gemini-test-model');
   assert.equal(openAiCalls, 0);
 });

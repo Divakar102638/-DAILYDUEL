@@ -26,7 +26,7 @@ function createApp({
   mongoClient = getMongoClient,
   now = () => new Date(),
   geminiApiKey = process.env.GEMINI_API_KEY,
-  geminiModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  geminiModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
   geminiInputPricePerMillion = process.env.GEMINI_INPUT_PRICE_PER_MILLION,
   geminiOutputPricePerMillion = process.env.GEMINI_OUTPUT_PRICE_PER_MILLION,
   openAiApiKey = process.env.OPENAI_API_KEY,
