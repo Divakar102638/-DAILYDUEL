@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { api, ApiError } from '../api';
 import { Alert, EmptyState, LoadingState, Modal, PageHeader, Pagination, StatusBadge } from '../components/ui';
 import { useApiResource } from '../hooks/useApiResource';
-import type { AdminQuestion, Category } from '../types';
+import type { AdminQuestion, AiQuestionCategory, Category } from '../types';
 import { parseBulkQuestionsJson, parseQuestionOptions } from '../validation';
 
 const questionTypes = [
@@ -164,21 +164,62 @@ export function QuestionsPage() {
   const [bulkReport, setBulkReport] = useState<{ created: { questionId: string }[]; duplicates: { questionText: string }[]; invalid: { index: number; message: string }[] } | null>(null);
   const [bulkError, setBulkError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiCategory, setAiCategory] = useState('');
+  const [aiDifficulty, setAiDifficulty] = useState('mixed');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [busyQuestionId, setBusyQuestionId] = useState('');
   const [feedback, setFeedback] = useState('');
   const [actionError, setActionError] = useState('');
   const params = new URLSearchParams({ status, page: String(page), pageSize: '25' });
   if (search.trim()) params.set('search', search.trim());
   const resource = useApiResource(() => api.questions(params), [status, page, search]);
   const categoryResource = useApiResource(() => api.categories());
+  const aiCategoryResource = useApiResource(() => api.aiQuestionCategories());
 
   async function publish(question: AdminQuestion) {
     setActionError('');
+    setBusyQuestionId(question.id);
     try {
       await api.post(`/api/v1/admin/quizzes/questions/${question.id}/publish`, {});
-      setFeedback('Question reviewed and published.');
+      setFeedback('Question approved and published.');
       resource.reload();
     } catch (reason) {
       setActionError(reason instanceof ApiError ? reason.message : 'Question could not be published.');
+    } finally {
+      setBusyQuestionId('');
+    }
+  }
+
+  async function reject(question: AdminQuestion) {
+    if (!window.confirm(`Reject "${question.questionText}"? It will not be available for an exam.`)) return;
+    setActionError('');
+    setBusyQuestionId(question.id);
+    try {
+      await api.post(`/api/v1/admin/quizzes/questions/${question.id}/reject`, {});
+      setFeedback('Question rejected. You can generate a replacement from the rejected record.');
+      resource.reload();
+    } catch (reason) {
+      setActionError(reason instanceof ApiError ? reason.message : 'Question could not be rejected.');
+    } finally {
+      setBusyQuestionId('');
+    }
+  }
+
+  async function regenerate(question: AdminQuestion) {
+    setActionError('');
+    setBusyQuestionId(question.id);
+    try {
+      await api.post(`/api/v1/admin/quizzes/questions/${question.id}/regenerate`, {
+        requestId: crypto.randomUUID(),
+      });
+      setFeedback('Replacement question saved as a draft for review.');
+      resource.reload();
+    } catch (reason) {
+      setActionError(reason instanceof ApiError ? reason.message : 'Question could not be regenerated.');
+    } finally {
+      setBusyQuestionId('');
     }
   }
 
@@ -217,24 +258,49 @@ export function QuestionsPage() {
     }
   }
 
+  async function generateAiQuestions(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAiError('');
+    setAiBusy(true);
+    try {
+      const result = await api.post<{ questionsCreated: number }>(
+        '/api/v1/admin/quizzes/questions/generate',
+        {
+          requestId: crypto.randomUUID(),
+          category: aiCategory,
+          difficulty: aiDifficulty,
+        },
+      );
+      setFeedback(`${result.questionsCreated} AI questions were saved as drafts. Review and approve them before scheduling an exam.`);
+      setAiOpen(false);
+      resource.reload();
+    } catch (reason) {
+      setAiError(reason instanceof ApiError ? reason.message : 'AI question generation failed.');
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   const questions = resource.data?.questions ?? [];
+  const categories: Category[] = categoryResource.data ?? [];
+  const aiCategories: AiQuestionCategory[] = aiCategoryResource.data ?? [];
 
   return (
     <div className="page-stack">
-      <PageHeader eyebrow="CONTENT QUALITY" title="Question bank" description="Create drafts, review answer keys, publish approved content, and import batches." action={<div className="button-row"><button className="button button-secondary" onClick={() => { setBulkOpen(true); setBulkReport(null); }}>Bulk import</button><button className="button button-primary" onClick={() => setEditor(null)}>Add question <span aria-hidden="true">+</span></button></div>} />
+      <PageHeader eyebrow="CONTENT QUALITY" title="Question bank" description="Generate or create drafts, review every answer, approve content, and manage rejected questions." action={<div className="button-row"><button className="button button-secondary" onClick={() => { setAiOpen(true); setAiError(''); }}>Generate 15 AI drafts</button><button className="button button-secondary" onClick={() => { setBulkOpen(true); setBulkReport(null); }}>Bulk import</button><button className="button button-primary" onClick={() => setEditor(null)}>Add question <span aria-hidden="true">+</span></button></div>} />
       {feedback && <Alert kind="success">{feedback}</Alert>}
       {actionError && <Alert>{actionError}</Alert>}
       <section className="panel">
         <div className="table-toolbar"><div><h2>Question records</h2><p>{resource.data?.pagination.total ?? '—'} matching questions</p></div><div className="toolbar-controls">
           <label className="search-field"><span className="sr-only">Search questions</span><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search question text…" /></label>
-          <label className="inline-field"><span className="sr-only">Filter questions</span><select aria-label="Filter questions" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="all">All statuses</option><option value="draft">Draft</option><option value="pending_review">Pending review</option><option value="published">Published</option><option value="archived">Archived</option></select></label>
+          <label className="inline-field"><span className="sr-only">Filter questions</span><select aria-label="Filter questions" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="all">All statuses</option><option value="draft">Draft</option><option value="pending_review">Pending review</option><option value="rejected">Rejected</option><option value="published">Published</option><option value="archived">Archived</option></select></label>
         </div></div>
         {resource.loading && <LoadingState />}
         {resource.error && <Alert>{resource.error}</Alert>}
         {!resource.loading && !resource.error && questions.length === 0 && <EmptyState title="No questions found" detail={search ? 'Try a different search term.' : 'Create a draft question or import a validated JSON batch.'} />}
         {questions.length > 0 && <>
           <div className="table-wrap"><table><thead><tr><th>Question</th><th>Category</th><th>Format</th><th>Difficulty</th><th>Modes</th><th>Status</th><th>Actions</th></tr></thead><tbody>
-            {questions.map((question) => <tr key={question.id}><td><div className="table-primary"><strong>{question.questionText}</strong><small>Correct answer: {formatAnswer(question.answerKey)} · {question.points} marks</small></div></td><td>{question.categoryId}<small className="cell-subtitle">{question.subcategory}</small></td><td>{question.type.replaceAll('_', ' ')}</td><td>{question.difficulty}</td><td>{question.modes.join(', ')}</td><td><StatusBadge status={question.status} /></td><td><div className="table-actions">{['draft', 'pending_review'].includes(question.status) && <><button className="text-button" onClick={() => setEditor(question)}>Edit</button><button className="text-button" onClick={() => void publish(question)}>Publish</button></>}{question.status !== 'archived' && <button className="text-button text-danger" onClick={() => void archive(question)}>Archive</button>}</div></td></tr>)}
+            {questions.map((question) => <tr key={question.id}><td><div className="table-primary"><strong>{question.questionText}</strong><small>Options: {question.options.map((option) => `${option.id}. ${option.text}`).join(' · ') || 'No multiple-choice options'}</small><small>Correct answer: {formatAnswer(question.answerKey, question.options)} · {question.points} marks</small><small>Explanation: {question.explanation}</small></div></td><td>{question.categoryId}<small className="cell-subtitle">{question.subcategory}</small></td><td>{question.type.replaceAll('_', ' ')}</td><td>{question.difficulty}</td><td>{question.modes.join(', ')}</td><td><StatusBadge status={question.status} /></td><td><div className="table-actions">{['draft', 'pending_review'].includes(question.status) && <><button className="text-button" disabled={busyQuestionId === question.id} onClick={() => setEditor(question)}>Edit</button><button className="text-button" disabled={busyQuestionId === question.id} onClick={() => void publish(question)}>Approve</button><button className="text-button text-danger" disabled={busyQuestionId === question.id} onClick={() => void reject(question)}>Reject</button></>}{question.status === 'rejected' && question.generatedBy === 'ai' && <button className="text-button" disabled={busyQuestionId === question.id} onClick={() => void regenerate(question)}>{busyQuestionId === question.id ? 'Regenerating…' : 'Regenerate'}</button>}{question.status !== 'archived' && <button className="text-button text-danger" disabled={busyQuestionId === question.id} onClick={() => void archive(question)}>Archive</button>}</div></td></tr>)}
           </tbody></table></div>
           <Pagination page={resource.data?.pagination.page ?? 1} pageCount={resource.data?.pagination.pageCount ?? 1} onChange={setPage} />
         </>}
@@ -243,7 +309,17 @@ export function QuestionsPage() {
         ? <Modal title="Preparing question form" onClose={() => setEditor(undefined)}><LoadingState label="Loading categories…" /></Modal>
         : categoryResource.error
           ? <Modal title="Question form unavailable" onClose={() => setEditor(undefined)}><Alert>{categoryResource.error}</Alert></Modal>
-          : <QuestionEditor question={editor ?? undefined} categories={categoryResource.data ?? []} onClose={() => setEditor(undefined)} onSaved={() => { setFeedback('Question saved as a draft.'); resource.reload(); }} />)}
+          : <QuestionEditor question={editor ?? undefined} categories={categories} onClose={() => setEditor(undefined)} onSaved={() => { setFeedback('Question saved as a draft.'); resource.reload(); }} />)}
+      {aiOpen && <Modal title="Generate AI question drafts" onClose={() => setAiOpen(false)}>
+        <form className="form-stack" onSubmit={(event) => void generateAiQuestions(event)}>
+          <p className="muted">Generate exactly 15 multiple-choice drafts in the selected category. Each draft has four answer options, a correct answer, and an explanation. Review and approve each question before it can be used in a competitive exam.</p>
+          {aiError && <Alert>{aiError}</Alert>}
+          {aiCategoryResource.error && <Alert>{aiCategoryResource.error}</Alert>}
+          <label className="field"><span>Category</span><select required value={aiCategory} onChange={(event) => setAiCategory(event.target.value)} disabled={aiCategoryResource.loading}>{aiCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
+          <label className="field"><span>Difficulty</span><select value={aiDifficulty} onChange={(event) => setAiDifficulty(event.target.value)}><option value="mixed">Mixed</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
+          <div className="form-actions"><button type="button" className="button button-secondary" onClick={() => setAiOpen(false)}>Cancel</button><button className="button button-primary" disabled={aiBusy || aiCategoryResource.loading || aiCategories.length === 0}>{aiBusy ? 'Generating drafts…' : 'Generate 15 drafts'}</button></div>
+        </form>
+      </Modal>}
       {bulkOpen && <Modal title="Bulk question import" onClose={() => setBulkOpen(false)} size="wide">
         <form className="form-stack" onSubmit={importQuestions}>
           <p className="muted">Paste a JSON array of question objects. Up to 100 entries are validated; imported items become drafts. The backend reports created, duplicate, and invalid entries individually.</p>
@@ -257,7 +333,9 @@ export function QuestionsPage() {
   );
 }
 
-function formatAnswer(answer: AdminQuestion['answerKey']) {
+function formatAnswer(answer: AdminQuestion['answerKey'], options: AdminQuestion['options']) {
   if (typeof answer === 'object') return 'personality result mapping';
+  const correctOption = options.find((option) => option.id === answer);
+  if (correctOption) return `${answer}. ${correctOption.text}`;
   return String(answer);
 }

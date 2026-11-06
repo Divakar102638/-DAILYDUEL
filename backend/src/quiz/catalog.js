@@ -21,6 +21,8 @@ const DEFAULT_CATEGORIES = [
     name: 'Entertainment',
     subcategories: [
       'Telugu cinema and Tollywood',
+      'Cinema',
+      'Entertainment',
       'Bollywood and Hollywood',
       'Music and songs',
       'Actors and actresses',
@@ -50,6 +52,8 @@ const DEFAULT_CATEGORIES = [
       'Geography',
       'Science',
       'Politics and government',
+      'Sports',
+      'Politics',
       'Sports and cricket',
       'English vocabulary',
       'Aptitude',

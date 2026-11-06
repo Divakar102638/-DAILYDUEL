@@ -1,8 +1,10 @@
 const express = require('express');
+const { rateLimit } = require('express-rate-limit');
 const { ObjectId } = require('mongodb');
 const { getDatabase, getUsersCollection } = require('../db/mongo');
 const { createAuthMiddleware, requireAdmin } = require('../middleware/auth');
 const { DEFAULT_CATEGORIES, publicCategory } = require('../quiz/catalog');
+const { AI_CATEGORIES, AiGenerationError } = require('../quiz/question-generator');
 const {
   QuizValidationError,
   validateQuestion,
@@ -11,6 +13,7 @@ const {
 const QUESTION_STATUSES = new Set([
   'draft',
   'pending_review',
+  'rejected',
   'published',
   'archived',
 ]);
@@ -27,9 +30,78 @@ function createAdminQuizRouter({
   getCollection = (name) => getDatabase().collection(name),
   authTokenSecret = process.env.AUTH_TOKEN_SECRET,
   now = () => new Date(),
+  questionGenerator,
+  generationLimiter = createAiGenerationLimiter(),
 } = {}) {
   const router = express.Router();
+  let questionFingerprintIndexPromise;
+  const ensureQuestionFingerprintIndex = () => {
+    if (!questionFingerprintIndexPromise) {
+      questionFingerprintIndexPromise = getCollection('questions')
+        .createIndex(
+          { aiDuplicateFingerprint: 1 },
+          {
+            name: 'unique_ai_question_fingerprint',
+            unique: true,
+            partialFilterExpression: {
+              aiDuplicateFingerprint: { $exists: true },
+            },
+          },
+        )
+        .catch((error) => {
+          questionFingerprintIndexPromise = undefined;
+          throw error;
+        });
+    }
+    return questionFingerprintIndexPromise;
+  };
   router.use(createAuthMiddleware({ usersCollection, authTokenSecret }), requireAdmin);
+
+  router.post('/questions/generate', generationLimiter, async (request, response) => {
+    const body = request.body || {};
+    const category = AI_CATEGORIES.find((item) => item.id === body.category);
+    const difficulty = body.difficulty ?? 'mixed';
+    const requestId = body.requestId;
+    if (
+      !category ||
+      !['easy', 'medium', 'hard', 'mixed'].includes(difficulty) ||
+      !isRequestId(requestId)
+    ) {
+      throw new QuizValidationError(
+        'Question generation requires a supported category, difficulty, and request ID.',
+      );
+    }
+
+    const configuredCategory = await findCategory(getCollection, category.categoryId);
+    if (
+      !configuredCategory ||
+      configuredCategory.active === false ||
+      !configuredCategory.subcategories?.includes(category.subcategory)
+    ) {
+      throw new QuizValidationError(
+        'The selected AI question category is not configured or active.',
+      );
+    }
+
+    const result = await generateAndSaveDrafts({
+      getCollection,
+      questionGenerator,
+      requestId,
+      category,
+      difficulty,
+      count: 15,
+      adminId: request.authenticatedUser.id,
+      now,
+      ensureQuestionFingerprintIndex,
+    });
+    response.status(result.replayed ? 200 : 201).json(result);
+  });
+
+  router.get('/ai-categories', (_request, response) => {
+    response.json({
+      categories: AI_CATEGORIES.map(({ id, label }) => ({ id, label })),
+    });
+  });
 
   router.get('/categories', async (_request, response) => {
     const stored = await getCollection('quiz_categories').find({}).toArray();
@@ -610,6 +682,15 @@ function createAdminQuizRouter({
       });
       return;
     }
+    if (!['draft', 'pending_review'].includes(question.status)) {
+      response.status(409).json({
+        error: {
+          code: 'QUESTION_NOT_REVIEWABLE',
+          message: 'Only draft or pending-review questions can be approved.',
+        },
+      });
+      return;
+    }
     if (question.modes.includes('competitive') && !question.deterministic) {
       response.status(400).json({
         error: {
@@ -631,6 +712,118 @@ function createAdminQuizRouter({
       },
     );
     response.json({ questionId: question._id.toString(), status: 'published' });
+  });
+
+  router.post('/questions/:questionId/reject', async (request, response) => {
+    if (!ObjectId.isValid(request.params.questionId)) {
+      response.status(404).json({
+        error: { code: 'QUESTION_NOT_FOUND', message: 'Question not found.' },
+      });
+      return;
+    }
+    const questions = getCollection('questions');
+    const questionId = new ObjectId(request.params.questionId);
+    const question = await questions.findOne({ _id: questionId });
+    if (!question) {
+      response.status(404).json({
+        error: { code: 'QUESTION_NOT_FOUND', message: 'Question not found.' },
+      });
+      return;
+    }
+    if (!['draft', 'pending_review'].includes(question.status)) {
+      response.status(409).json({
+        error: {
+          code: 'QUESTION_NOT_REVIEWABLE',
+          message: 'Only draft or pending-review questions can be rejected.',
+        },
+      });
+      return;
+    }
+    const reason = request.body?.reason;
+    if (
+      reason !== undefined &&
+      (typeof reason !== 'string' || reason.trim().length > 500)
+    ) {
+      throw new QuizValidationError('Rejection reason must be 500 characters or fewer.');
+    }
+    await questions.updateOne(
+      { _id: questionId, status: { $in: ['draft', 'pending_review'] } },
+      {
+        $set: {
+          status: 'rejected',
+          reviewedBy: request.authenticatedUser.id,
+          reviewedAt: now(),
+          ...(reason?.trim() ? { rejectionReason: reason.trim() } : {}),
+          updatedAt: now(),
+        },
+      },
+    );
+    response.json({ questionId: questionId.toString(), status: 'rejected' });
+  });
+
+  router.post('/questions/:questionId/regenerate', generationLimiter, async (request, response) => {
+    if (!ObjectId.isValid(request.params.questionId)) {
+      response.status(404).json({
+        error: { code: 'QUESTION_NOT_FOUND', message: 'Question not found.' },
+      });
+      return;
+    }
+    const questionId = new ObjectId(request.params.questionId);
+    const rejectedQuestion = await getCollection('questions').findOne({
+      _id: questionId,
+    });
+    if (!rejectedQuestion) {
+      response.status(404).json({
+        error: { code: 'QUESTION_NOT_FOUND', message: 'Question not found.' },
+      });
+      return;
+    }
+    if (rejectedQuestion.status !== 'rejected') {
+      response.status(409).json({
+        error: {
+          code: 'QUESTION_NOT_REJECTED',
+          message: 'Only rejected questions can be regenerated.',
+        },
+      });
+      return;
+    }
+    const category =
+      AI_CATEGORIES.find((item) => item.id === rejectedQuestion.aiCategory) ??
+      AI_CATEGORIES.find(
+        (item) =>
+          item.categoryId === rejectedQuestion.categoryId &&
+          item.subcategory === rejectedQuestion.subcategory,
+      );
+    if (!category || !isRequestId(request.body?.requestId)) {
+      throw new QuizValidationError(
+        'Regeneration requires a supported question category and request ID.',
+      );
+    }
+    const configuredCategory = await findCategory(getCollection, category.categoryId);
+    if (
+      !configuredCategory ||
+      configuredCategory.active === false ||
+      !configuredCategory.subcategories?.includes(category.subcategory)
+    ) {
+      throw new QuizValidationError(
+        'The rejected question category is not configured or active.',
+      );
+    }
+
+    const result = await generateAndSaveDrafts({
+      getCollection,
+      questionGenerator,
+      requestId: request.body.requestId,
+      category,
+      difficulty: rejectedQuestion.difficulty,
+      count: 1,
+      adminId: request.authenticatedUser.id,
+      now,
+      ensureQuestionFingerprintIndex,
+      regeneratedFrom: questionId.toString(),
+      excludeQuestions: [rejectedQuestion.questionText],
+    });
+    response.status(result.replayed ? 200 : 201).json(result);
   });
 
   router.post('/exams', async (request, response) => {
@@ -760,6 +953,270 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function createAiGenerationLimiter({
+  limit = 5,
+  windowMs = 15 * 60 * 1000,
+} = {}) {
+  return rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    handler(_request, response) {
+      response.status(429).json({
+        error: {
+          code: 'AI_GENERATION_RATE_LIMITED',
+          message: 'Too many AI generation requests. Wait and try again.',
+        },
+      });
+    },
+  });
+}
+
+function isRequestId(value) {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
+}
+
+async function generateAndSaveDrafts({
+  getCollection,
+  questionGenerator,
+  requestId,
+  category,
+  difficulty,
+  count,
+  adminId,
+  now,
+  regeneratedFrom,
+  excludeQuestions = [],
+  ensureQuestionFingerprintIndex = (questions) =>
+    questions.createIndex(
+      { aiDuplicateFingerprint: 1 },
+      {
+        name: 'unique_ai_question_fingerprint',
+        unique: true,
+        partialFilterExpression: { aiDuplicateFingerprint: { $exists: true } },
+      },
+    ),
+}) {
+  if (typeof questionGenerator !== 'function') {
+    throw new AiGenerationError('AI question generation is unavailable.', {
+      code: 'AI_NOT_CONFIGURED',
+    });
+  }
+  const jobs = getCollection('ai_generation_jobs');
+  const priorJob = await jobs.findOne({ _id: requestId });
+  if (priorJob) return generationJobResult(priorJob);
+
+  const job = {
+    _id: requestId,
+    status: 'processing',
+    category: category.id,
+    difficulty,
+    requestedCount: count,
+    createdBy: adminId,
+    createdAt: now(),
+  };
+  try {
+    await jobs.insertOne(job);
+  } catch (error) {
+    if (error.code !== 11000) throw error;
+    const concurrentJob = await jobs.findOne({ _id: requestId });
+    if (!concurrentJob) throw error;
+    return generationJobResult(concurrentJob);
+  }
+
+  try {
+    const questions = getCollection('questions');
+    await ensureQuestionFingerprintIndex(questions);
+    const recent = await questions
+      .find({
+        categoryId: category.categoryId,
+        subcategory: category.subcategory,
+        status: { $ne: 'rejected' },
+      })
+      .project({ questionText: 1 })
+      .sort({ updatedAt: -1 })
+      .limit(150)
+      .toArray();
+    const generated = await questionGenerator({
+      categoryId: category.id,
+      difficulty,
+      count,
+      requestId,
+      excludeQuestions: [
+        ...excludeQuestions,
+        ...recent.map((question) => question.questionText),
+      ],
+    });
+    if (
+      !generated ||
+      !Array.isArray(generated.questions) ||
+      generated.questions.length !== count
+    ) {
+      throw new AiGenerationError(
+        `The AI provider must return exactly ${count} questions. No questions were saved.`,
+        { status: 502, code: 'AI_INVALID_RESPONSE' },
+      );
+    }
+
+    const batchFingerprints = new Set();
+    const documents = [];
+    for (const draft of generated.questions) {
+      const validated = validateQuestion({ ...draft, modes: ['competitive'] });
+      if (
+        validated.categoryId !== category.categoryId ||
+        validated.subcategory !== category.subcategory ||
+        (difficulty !== 'mixed' && validated.difficulty !== difficulty) ||
+        validated.type !== 'multiple_choice' ||
+        validated.options.length !== 4 ||
+        new Set(
+          validated.options.map((option) => option.text.toLowerCase()),
+        ).size !== 4
+      ) {
+        throw new AiGenerationError(
+          'The AI provider returned questions with invalid category, difficulty, or options. No questions were saved.',
+          { status: 502, code: 'AI_INVALID_RESPONSE' },
+        );
+      }
+      if (batchFingerprints.has(validated.duplicateFingerprint)) {
+        throw new AiGenerationError(
+          'The AI provider returned duplicate questions. No questions were saved.',
+          { status: 409, code: 'DUPLICATE_GENERATED_QUESTIONS' },
+        );
+      }
+      batchFingerprints.add(validated.duplicateFingerprint);
+      if (
+        await questions.findOne({
+          duplicateFingerprint: validated.duplicateFingerprint,
+          status: { $ne: 'rejected' },
+        })
+      ) {
+        throw new AiGenerationError(
+          'A generated question already exists. No questions were saved; try generating again.',
+          { status: 409, code: 'DUPLICATE_GENERATED_QUESTIONS' },
+        );
+      }
+      documents.push({
+        ...validated,
+        aiDuplicateFingerprint: validated.duplicateFingerprint,
+        status: 'draft',
+        generatedBy: 'ai',
+        aiCategory: category.id,
+        generationRequestId: requestId,
+        generationMetadata: {
+          provider: generated.provider ?? 'openai',
+          model: generated.model ?? null,
+          category: category.label,
+          generatedAt: now(),
+          usage: generated.usage ?? null,
+          estimatedCostUsd: generated.estimatedCostUsd ?? null,
+        },
+        ...(regeneratedFrom ? { regeneratedFrom } : {}),
+        createdBy: adminId,
+        createdAt: now(),
+        updatedAt: now(),
+      });
+    }
+
+    let inserted;
+    try {
+      inserted = await questions.insertMany(documents, { ordered: true });
+    } catch (error) {
+      if (isAiFingerprintDuplicate(error)) {
+        await questions.deleteMany({ generationRequestId: requestId });
+        throw new AiGenerationError(
+          'A generated question already exists. No duplicate questions were saved; try generating again.',
+          { status: 409, code: 'DUPLICATE_GENERATED_QUESTIONS' },
+        );
+      }
+      throw error;
+    }
+    const questionIds = Object.values(inserted.insertedIds).map((id) =>
+      id.toString(),
+    );
+    await jobs.updateOne(
+      { _id: requestId, status: 'processing' },
+      {
+        $set: {
+          status: 'completed',
+          questionIds,
+          usage: generated.usage ?? null,
+          provider: generated.provider ?? 'openai',
+          model: generated.model ?? null,
+          estimatedCostUsd: generated.estimatedCostUsd ?? null,
+          completedAt: now(),
+        },
+      },
+    );
+    return {
+      requestId,
+      status: 'draft',
+      questionsCreated: questionIds.length,
+      questionIds,
+      replayed: false,
+    };
+  } catch (error) {
+    const failure =
+      error instanceof AiGenerationError
+        ? error
+        : error instanceof QuizValidationError
+          ? new AiGenerationError(
+              'The AI provider returned questions that failed backend validation. No questions were saved.',
+              { status: 502, code: 'AI_INVALID_RESPONSE' },
+            )
+          : error;
+    await jobs.updateOne(
+      { _id: requestId, status: 'processing' },
+      {
+        $set: {
+          status: 'failed',
+          failureCode: failure.code ?? 'AI_GENERATION_FAILED',
+          completedAt: now(),
+        },
+      },
+    );
+    throw failure;
+  }
+}
+
+function generationJobResult(job) {
+  if (job.status === 'completed') {
+    return {
+      requestId: job._id,
+      status: 'draft',
+      questionsCreated: job.questionIds.length,
+      questionIds: job.questionIds,
+      replayed: true,
+    };
+  }
+  if (job.status === 'processing') {
+    throw new AiGenerationError(
+      'This AI request is already being processed. Wait before retrying.',
+      { status: 409, code: 'AI_REQUEST_IN_PROGRESS' },
+    );
+  }
+  throw new AiGenerationError(
+    'This AI request already failed. Submit a new request to try again.',
+    { status: 409, code: 'AI_REQUEST_ALREADY_FAILED' },
+  );
+}
+
+function isAiFingerprintDuplicate(error) {
+  const writeErrors = Array.isArray(error?.writeErrors)
+    ? error.writeErrors.map((writeError) => writeError.err ?? writeError)
+    : [];
+  return [error, ...writeErrors].some(
+    (detail) =>
+      detail?.code === 11000 &&
+      detail.keyPattern?.aiDuplicateFingerprint !== undefined,
+  );
+}
+
 async function findCategory(getCollection, categoryId) {
   const stored = await getCollection('quiz_categories').findOne({
     _id: categoryId,
@@ -767,4 +1224,8 @@ async function findCategory(getCollection, categoryId) {
   return stored ?? DEFAULT_CATEGORIES.find((item) => item.id === categoryId);
 }
 
-module.exports = { createAdminQuizRouter };
+module.exports = {
+  createAdminQuizRouter,
+  createAiGenerationLimiter,
+  generateAndSaveDrafts,
+};

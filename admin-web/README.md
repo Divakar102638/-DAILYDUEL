@@ -55,8 +55,9 @@ authorization boundary for every administrator operation.
 - Overview with live backend counts.
 - Exam listing, safe metadata editing, scheduling, and pre-participation
   archive.
-- Question draft creation/editing, review/publishing, archive, and validated
-  JSON batch import.
+- Question draft creation/editing, AI-assisted 15-question draft generation,
+  answer review, approval/rejection/regeneration, archive, and validated JSON
+  batch import.
 - Category configuration.
 - Published exam rankings and results.
 - Paginated student directory using the existing users collection.
@@ -93,3 +94,8 @@ exact admin website origin in `CORS_ORIGINS` (scheme and host only, no path or
 trailing slash), preserving any other required origins. Redeploy/restart the
 backend after updating its environment, then build and redeploy the admin
 site. Do not put secrets in browser environment variables.
+
+AI draft generation is requested from the backend using the administrator's
+existing authenticated API session. Provider keys remain server-side and are
+never sent to or stored in the browser; each generated question remains
+unpublished until explicitly approved by an administrator.

@@ -58,7 +58,14 @@ export interface AdminQuestion {
   points: number;
   modes: ('casual' | 'competitive')[];
   image: { url: string; source: string; license: string } | null;
-  status: 'draft' | 'pending_review' | 'published' | 'archived';
+  status: 'draft' | 'pending_review' | 'rejected' | 'published' | 'archived';
+  generatedBy?: 'ai' | string;
+  aiCategory?: string;
+}
+
+export interface AiQuestionCategory {
+  id: string;
+  label: string;
 }
 
 export interface AdminExam {
