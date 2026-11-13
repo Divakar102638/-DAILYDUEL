@@ -288,6 +288,79 @@ test('admin AI generation saves exactly fifteen drafts and replays idempotently'
   assert.equal(schedule.status, 400);
 });
 
+test('admin AI generation validates and forwards topic, language, and bounded quantity', async () => {
+  let generationRequest;
+  const context = await setup({
+    questionGenerator: async (request) => {
+      generationRequest = request;
+      return {
+        questions: Array.from({ length: request.count }, (_, index) =>
+          buildDraft(index, 'general-knowledge'),
+        ),
+        model: 'test-model',
+      };
+    },
+  });
+  const response = await fetch(`${context.baseUrl}/questions/generate`, {
+    method: 'POST',
+    headers: context.headers,
+    body: JSON.stringify({
+      requestId: '4a91a1e2-25e5-4e15-8f00-39b850f29037',
+      category: 'sports',
+      difficulty: 'medium',
+      topic: 'World Cup history',
+      language: 'Telugu',
+      count: 3,
+    }),
+  });
+  const result = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(result.questionsCreated, 3);
+  assert.equal(generationRequest.count, 3);
+  assert.equal(generationRequest.topic, 'World Cup history');
+  assert.equal(generationRequest.language, 'Telugu');
+  assert.ok(
+    context.collections.questions.documents.every(
+      (question) =>
+        question.status === 'draft' &&
+        question.subcategory === 'Sports',
+    ),
+  );
+});
+
+test('admin AI generation rejects out-of-range quantities and oversized topic or language', async () => {
+  let generationCalls = 0;
+  const context = await setup({
+    questionGenerator: async () => {
+      generationCalls += 1;
+      return { questions: [] };
+    },
+  });
+  const invalidRequests = [
+    { count: null },
+    { count: 0 },
+    { count: 51 },
+    { topic: 'x'.repeat(101) },
+    { language: 'x'.repeat(51) },
+  ];
+
+  for (const [index, invalidFields] of invalidRequests.entries()) {
+    const response = await fetch(`${context.baseUrl}/questions/generate`, {
+      method: 'POST',
+      headers: context.headers,
+      body: JSON.stringify({
+        requestId: `5a91a1e2-25e5-4e15-8f00-00000000000${index}`,
+        category: 'sports',
+        ...invalidFields,
+      }),
+    });
+    assert.equal(response.status, 400);
+  }
+  assert.equal(generationCalls, 0);
+  assert.equal(context.collections.questions.documents.length, 0);
+});
+
 test('simultaneous AI generation requests cannot persist duplicate fingerprints', async () => {
   let generatorCalls = 0;
   let releaseGenerators;

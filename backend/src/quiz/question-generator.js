@@ -94,13 +94,25 @@ function createOpenAIQuestionGenerator({
 
   return async function generateQuestions({
     categoryId,
+    categoryOverride,
+    topic,
+    language = 'English',
+    instructions = '',
     difficulty = 'mixed',
     count = 15,
     requestId = 'untracked',
     excludeQuestions = [],
   } = {}) {
-    const category = AI_CATEGORIES.find((item) => item.id === categoryId);
-    if (!category || !AI_DIFFICULTIES.has(difficulty) || ![1, 15].includes(count)) {
+    const category =
+      resolveCategoryOverride(categoryOverride) ??
+      AI_CATEGORIES.find((item) => item.id === categoryId);
+    if (
+      !category ||
+      !AI_DIFFICULTIES.has(difficulty) ||
+      !Number.isInteger(count) ||
+      count < 1 ||
+      count > 50
+    ) {
       throw new AiGenerationError('The AI question generation request is invalid.', {
         status: 400,
         code: 'INVALID_AI_GENERATION_REQUEST',
@@ -117,7 +129,7 @@ function createOpenAIQuestionGenerator({
     try {
       const response = await configuredClient.responses.create({
         model,
-        max_output_tokens: 10_000,
+        max_output_tokens: 20_000,
         input: [
           {
             role: 'system',
@@ -128,6 +140,9 @@ function createOpenAIQuestionGenerator({
             role: 'user',
             content: JSON.stringify({
               category: category.label,
+              topic: topic ?? category.subcategory,
+              language,
+              additionalInstructions: instructions,
               difficulty,
               questionCount: count,
               excludedQuestionTexts: excludeQuestions.slice(0, 100),
@@ -145,7 +160,7 @@ function createOpenAIQuestionGenerator({
             type: 'json_schema',
             name: 'dailyduel_quiz_questions',
             strict: true,
-            schema: createQuestionSchema(difficulty),
+            schema: createQuestionSchema(difficulty, category.label),
           },
         },
       });
@@ -171,6 +186,7 @@ function createOpenAIQuestionGenerator({
         category,
         difficulty,
         count,
+        topic,
       );
 
       const usage = normalizeUsage(response.usage);
@@ -234,13 +250,25 @@ function createGeminiQuestionGenerator({
 
   return async function generateQuestions({
     categoryId,
+    categoryOverride,
+    topic,
+    language = 'English',
+    instructions = '',
     difficulty = 'mixed',
     count = 15,
     requestId = 'untracked',
     excludeQuestions = [],
   } = {}) {
-    const category = AI_CATEGORIES.find((item) => item.id === categoryId);
-    if (!category || !AI_DIFFICULTIES.has(difficulty) || ![1, 15].includes(count)) {
+    const category =
+      resolveCategoryOverride(categoryOverride) ??
+      AI_CATEGORIES.find((item) => item.id === categoryId);
+    if (
+      !category ||
+      !AI_DIFFICULTIES.has(difficulty) ||
+      !Number.isInteger(count) ||
+      count < 1 ||
+      count > 50
+    ) {
       throw new AiGenerationError('The AI question generation request is invalid.', {
         status: 400,
         code: 'INVALID_AI_GENERATION_REQUEST',
@@ -266,16 +294,21 @@ function createGeminiQuestionGenerator({
             'If difficulty is mixed, distribute questions across easy, medium, and hard.',
             'Use option IDs a, b, c, and d exactly once; answerKey must name the correct option ID.',
             'Prefer verifiable, stable facts over rapidly changing current-affairs claims.',
+            'Write every question and answer option in the requested language.',
+            'Follow any additional schedule-specific instructions exactly when they do not conflict with quiz safety and accuracy.',
           ],
           category: category.label,
+          topic: topic ?? category.subcategory,
+          language,
+          additionalInstructions: instructions,
           difficulty,
           questionCount: count,
           excludedQuestionTexts: excludeQuestions.slice(0, 100),
         }),
         config: {
           responseMimeType: 'application/json',
-          responseJsonSchema: createQuestionSchema(difficulty),
-          maxOutputTokens: 10_000,
+          responseJsonSchema: createQuestionSchema(difficulty, category.label),
+          maxOutputTokens: 20_000,
           temperature: 0.4,
         },
       });
@@ -301,6 +334,7 @@ function createGeminiQuestionGenerator({
         category,
         difficulty,
         count,
+        topic,
       );
       const usage = normalizeUsage(response.usageMetadata);
       const estimatedCostUsd =
@@ -376,7 +410,21 @@ function createConfiguredQuestionGenerator({
   });
 }
 
-function validateGeneratedQuestions(payload, category, difficulty, count) {
+function resolveCategoryOverride(category) {
+  if (!category) return null;
+  if (
+    typeof category !== 'object' ||
+    typeof category.id !== 'string' ||
+    typeof category.label !== 'string' ||
+    typeof category.categoryId !== 'string' ||
+    typeof category.subcategory !== 'string'
+  ) {
+    return null;
+  }
+  return category;
+}
+
+function validateGeneratedQuestions(payload, category, difficulty, count, topic) {
   if (!Array.isArray(payload?.questions) || payload.questions.length !== count) {
     throw new AiGenerationError(
       `The AI provider must return exactly ${count} questions. No questions were saved.`,
@@ -431,7 +479,7 @@ function validateGeneratedQuestions(payload, category, difficulty, count) {
   });
 }
 
-function createQuestionSchema(difficulty) {
+function createQuestionSchema(difficulty, categoryLabel) {
   const difficultyValues =
     difficulty === 'mixed' ? ['easy', 'medium', 'hard'] : [difficulty];
   return {
@@ -446,7 +494,7 @@ function createQuestionSchema(difficulty) {
           properties: {
             category: {
               type: 'string',
-              enum: AI_CATEGORIES.map((item) => item.label),
+              enum: [categoryLabel],
             },
             questionText: { type: 'string' },
             options: {

@@ -62,13 +62,25 @@ function createAdminQuizRouter({
     const category = AI_CATEGORIES.find((item) => item.id === body.category);
     const difficulty = body.difficulty ?? 'mixed';
     const requestId = body.requestId;
+    const count = body.count === undefined ? 15 : body.count;
+    const topic = typeof body.topic === 'string' ? body.topic.trim() : '';
+    const language = typeof body.language === 'string' ? body.language.trim() : 'English';
     if (
       !category ||
       !['easy', 'medium', 'hard', 'mixed'].includes(difficulty) ||
-      !isRequestId(requestId)
+      !isRequestId(requestId) ||
+      !Number.isInteger(count) ||
+      count < 1 ||
+      count > 50 ||
+      (body.topic !== undefined &&
+        (typeof body.topic !== 'string' || topic.length > 100)) ||
+      (body.language !== undefined &&
+        (typeof body.language !== 'string' ||
+          language.length < 1 ||
+          language.length > 50))
     ) {
       throw new QuizValidationError(
-        'Question generation requires a supported category, difficulty, and request ID.',
+        'Question generation request contains an unsupported category, difficulty, request ID, question count, topic, or language.',
       );
     }
 
@@ -88,8 +100,10 @@ function createAdminQuizRouter({
       questionGenerator,
       requestId,
       category,
+      topic: topic || undefined,
+      language,
       difficulty,
-      count: 15,
+      count,
       adminId: request.authenticatedUser.id,
       now,
       ensureQuestionFingerprintIndex,
@@ -987,6 +1001,8 @@ async function generateAndSaveDrafts({
   questionGenerator,
   requestId,
   category,
+  topic,
+  language = 'English',
   difficulty,
   count,
   adminId,
@@ -1016,6 +1032,8 @@ async function generateAndSaveDrafts({
     _id: requestId,
     status: 'processing',
     category: category.id,
+    topic,
+    language,
     difficulty,
     requestedCount: count,
     createdBy: adminId,
@@ -1045,6 +1063,8 @@ async function generateAndSaveDrafts({
       .toArray();
     const generated = await questionGenerator({
       categoryId: category.id,
+      topic,
+      language,
       difficulty,
       count,
       requestId,

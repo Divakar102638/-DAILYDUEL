@@ -166,7 +166,11 @@ export function QuestionsPage() {
   const [busy, setBusy] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiCategory, setAiCategory] = useState('');
+  const [aiTopic, setAiTopic] = useState('');
+  const [aiCount, setAiCount] = useState('15');
+  const [aiLanguage, setAiLanguage] = useState('English');
   const [aiDifficulty, setAiDifficulty] = useState('mixed');
+  const [aiRequestId, setAiRequestId] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState('');
   const [busyQuestionId, setBusyQuestionId] = useState('');
@@ -263,15 +267,21 @@ export function QuestionsPage() {
     setAiError('');
     setAiBusy(true);
     try {
+      const requestId = aiRequestId || crypto.randomUUID();
+      setAiRequestId(requestId);
       const result = await api.post<{ questionsCreated: number }>(
         '/api/v1/admin/quizzes/questions/generate',
         {
-          requestId: crypto.randomUUID(),
+          requestId,
           category: aiCategory,
+          topic: aiTopic.trim(),
+          count: Number(aiCount),
+          language: aiLanguage.trim(),
           difficulty: aiDifficulty,
         },
       );
       setFeedback(`${result.questionsCreated} AI questions were saved as drafts. Review and approve them before scheduling an exam.`);
+      setAiRequestId('');
       setAiOpen(false);
       resource.reload();
     } catch (reason) {
@@ -287,7 +297,7 @@ export function QuestionsPage() {
 
   return (
     <div className="page-stack">
-      <PageHeader eyebrow="CONTENT QUALITY" title="Question bank" description="Generate or create drafts, review every answer, approve content, and manage rejected questions." action={<div className="button-row"><button className="button button-secondary" onClick={() => { setAiOpen(true); setAiError(''); }}>Generate 15 AI drafts</button><button className="button button-secondary" onClick={() => { setBulkOpen(true); setBulkReport(null); }}>Bulk import</button><button className="button button-primary" onClick={() => setEditor(null)}>Add question <span aria-hidden="true">+</span></button></div>} />
+      <PageHeader eyebrow="CONTENT QUALITY" title="Question bank" description="Generate or create drafts, review every answer, approve content, and manage rejected questions." action={<div className="button-row"><button className="button button-secondary" onClick={() => { setAiOpen(true); setAiError(''); }}>Generate with AI</button><button className="button button-secondary" onClick={() => { setBulkOpen(true); setBulkReport(null); }}>Bulk import</button><button className="button button-primary" onClick={() => setEditor(null)}>Add question <span aria-hidden="true">+</span></button></div>} />
       {feedback && <Alert kind="success">{feedback}</Alert>}
       {actionError && <Alert>{actionError}</Alert>}
       <section className="panel">
@@ -312,12 +322,15 @@ export function QuestionsPage() {
           : <QuestionEditor question={editor ?? undefined} categories={categories} onClose={() => setEditor(undefined)} onSaved={() => { setFeedback('Question saved as a draft.'); resource.reload(); }} />)}
       {aiOpen && <Modal title="Generate AI question drafts" onClose={() => setAiOpen(false)}>
         <form className="form-stack" onSubmit={(event) => void generateAiQuestions(event)}>
-          <p className="muted">Generate exactly 15 multiple-choice drafts in the selected category. Each draft has four answer options, a correct answer, and an explanation. Review and approve each question before it can be used in a competitive exam.</p>
+          <p className="muted">Generated questions are saved as unpublished drafts. Review and approve each question before it can be used in a competitive exam.</p>
           {aiError && <Alert>{aiError}</Alert>}
           {aiCategoryResource.error && <Alert>{aiCategoryResource.error}</Alert>}
-          <label className="field"><span>Category</span><select required value={aiCategory} onChange={(event) => setAiCategory(event.target.value)} disabled={aiCategoryResource.loading}>{aiCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
-          <label className="field"><span>Difficulty</span><select value={aiDifficulty} onChange={(event) => setAiDifficulty(event.target.value)}><option value="mixed">Mixed</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
-          <div className="form-actions"><button type="button" className="button button-secondary" onClick={() => setAiOpen(false)}>Cancel</button><button className="button button-primary" disabled={aiBusy || aiCategoryResource.loading || aiCategories.length === 0}>{aiBusy ? 'Generating drafts…' : 'Generate 15 drafts'}</button></div>
+          <label className="field"><span>Category</span><select required value={aiCategory} onChange={(event) => { setAiCategory(event.target.value); setAiRequestId(''); }} disabled={aiCategoryResource.loading}>{aiCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
+          <label className="field"><span>Subject or topic</span><input value={aiTopic} onChange={(event) => { setAiTopic(event.target.value); setAiRequestId(''); }} maxLength={100} placeholder="Optional, e.g. World Cup history" /></label>
+          <label className="field"><span>Number of questions</span><input type="number" required min={1} max={50} step={1} value={aiCount} onChange={(event) => { setAiCount(event.target.value); setAiRequestId(''); }} /></label>
+          <label className="field"><span>Difficulty</span><select value={aiDifficulty} onChange={(event) => { setAiDifficulty(event.target.value); setAiRequestId(''); }}><option value="mixed">Mixed</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
+          <label className="field"><span>Language</span><input required value={aiLanguage} onChange={(event) => { setAiLanguage(event.target.value); setAiRequestId(''); }} maxLength={50} /></label>
+          <div className="form-actions"><button type="button" className="button button-secondary" onClick={() => setAiOpen(false)}>Cancel</button><button className="button button-primary" disabled={aiBusy || aiCategoryResource.loading || aiCategories.length === 0}>{aiBusy ? 'Generating drafts…' : 'Generate drafts'}</button></div>
         </form>
       </Modal>}
       {bulkOpen && <Modal title="Bulk question import" onClose={() => setBulkOpen(false)} size="wide">

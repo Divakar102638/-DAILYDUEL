@@ -55,7 +55,8 @@ authorization boundary for every administrator operation.
 - Overview with live backend counts.
 - Exam listing, safe metadata editing, scheduling, and pre-participation
   archive.
-- Question draft creation/editing, AI-assisted 15-question draft generation,
+- Question draft creation/editing, AI-assisted draft generation (15 by
+  default, configurable from 1–50 with topic and language),
   answer review, approval/rejection/regeneration, archive, and validated JSON
   batch import.
 - Category configuration.
@@ -99,3 +100,11 @@ AI draft generation is requested from the backend using the administrator's
 existing authenticated API session. Provider keys remain server-side and are
 never sent to or stored in the browser; each generated question remains
 unpublished until explicitly approved by an administrator.
+
+For a Render Static Site, use `admin-web` as the root directory, `npm ci &&
+npm run build` as the build command, and `dist` as the publish directory. Set
+the build-time `VITE_API_BASE_URL` to `https://dailyduel.onrender.com`, and add
+a `/*` to `/index.html` rewrite so client-side routes load directly. Add the
+exact deployed admin-site origin to the backend service's `CORS_ORIGINS`.
+The deployed Render service name, branch, URL, and current settings must be
+verified in the Render dashboard; they are not stored in this repository.

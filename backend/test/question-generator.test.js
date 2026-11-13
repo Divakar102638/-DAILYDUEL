@@ -210,6 +210,44 @@ test('Gemini generator requests JSON output and validates fifteen questions', as
   assert.equal(JSON.stringify(logs).includes('private-test-gemini-api-key'), false);
 });
 
+test('Gemini generator forwards configured count, topic, and language', async () => {
+  const category = AI_CATEGORIES.find((item) => item.id === 'sports');
+  let providerRequest;
+  const generator = createGeminiQuestionGenerator({
+    apiKey: 'private-test-gemini-api-key-that-must-not-be-logged',
+    client: {
+      models: {
+        generateContent: async (request) => {
+          providerRequest = request;
+          const input = JSON.parse(request.contents);
+          return {
+            text: JSON.stringify({
+              questions: Array.from({ length: input.questionCount }, (_, index) =>
+                providerQuestion(index, category.label),
+              ),
+            }),
+          };
+        },
+      },
+    },
+    logger: { info() {}, warn() {} },
+  });
+
+  const result = await generator({
+    categoryId: 'sports',
+    count: 3,
+    topic: 'World Cup history',
+    language: 'Telugu',
+  });
+
+  assert.equal(result.questions.length, 3);
+  assert.equal(result.questions[0].subcategory, 'Sports');
+  const input = JSON.parse(providerRequest.contents);
+  assert.equal(input.questionCount, 3);
+  assert.equal(input.topic, 'World Cup history');
+  assert.equal(input.language, 'Telugu');
+});
+
 test('Gemini generator uses the supported default model when no override is given', async () => {
   const category = AI_CATEGORIES.find((item) => item.id === 'sports');
   let requestedModel;
