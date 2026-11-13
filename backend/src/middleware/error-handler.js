@@ -43,8 +43,14 @@ function errorHandler(error, request, response, _next) {
 
   response.status(status).json({
     error: {
-      message: status === 503
-        ? 'Database is unavailable.'
+      ...(typeof error.safeMessage === 'string' &&
+      typeof error.code === 'string'
+        ? { code: error.code }
+        : {}),
+      message: typeof error.safeMessage === 'string'
+        ? error.safeMessage
+        : status === 503
+          ? 'Database is unavailable.'
         : status >= 500
           ? 'An unexpected server error occurred.'
           : 'The request could not be completed.',

@@ -54,7 +54,12 @@ function loadConfig() {
 
   const corsOrigins = parseCorsOrigins(process.env.CORS_ORIGINS);
 
-  return { host, port, uri, corsOrigins, authTokenSecret };
+  const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash-lite';
+  if (!/^[A-Za-z0-9._-]{1,100}$/.test(geminiModel)) {
+    throw new Error('GEMINI_MODEL must be a non-empty model identifier.');
+  }
+
+  return { host, port, uri, corsOrigins, authTokenSecret, geminiModel };
 }
 
 module.exports = { envPath, loadConfig, parseCorsOrigins };

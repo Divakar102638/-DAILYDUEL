@@ -6,6 +6,7 @@ import type {
   AdminSetupInput,
   AdminUser,
   Category,
+  AiQuestionCategory,
   ExamResult,
   Pagination,
 } from './types';
@@ -216,6 +217,12 @@ export class DailyDuelApi {
 
   async categories() {
     return (await this.get<{ categories: Category[] }>('/api/v1/admin/quizzes/categories')).categories;
+  }
+
+  async aiQuestionCategories() {
+    return (await this.get<{ categories: AiQuestionCategory[] }>(
+      '/api/v1/admin/quizzes/ai-categories',
+    )).categories;
   }
 
   async students(params = new URLSearchParams()) {

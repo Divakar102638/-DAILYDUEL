@@ -69,6 +69,10 @@ Web Service to use the backend subdirectory:
 - **Port:** Render supplies `PORT` automatically.
 - **Host:** The server defaults to `0.0.0.0` when `HOST` is not set. Do not set
   it to `127.0.0.1` in Render.
+- **AI environment:** Set `GEMINI_API_KEY` privately in the backend service.
+  `GEMINI_MODEL` defaults to `gemini-3.5-flash-lite`; override it only with a
+  model supported by the configured Gemini API account. Never expose the key
+  in the admin site or any `VITE_` variable.
 
 The backend loads `.env` from its own directory for local development; in
 production, Render-provided environment variables take precedence. Commit and

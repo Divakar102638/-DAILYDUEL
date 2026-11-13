@@ -8,6 +8,7 @@ const { createAdminQuizRouter } = require('./routes/admin-quizzes');
 const { createExamRouter } = require('./routes/exams');
 const { errorHandler, notFoundHandler } = require('./middleware/error-handler');
 const { createHealthRouter } = require('./routes/health');
+const { createConfiguredQuestionGenerator } = require('./quiz/question-generator');
 
 function createApp({
   checkDatabase = pingMongo,
@@ -24,6 +25,25 @@ function createApp({
   database = getDatabase,
   mongoClient = getMongoClient,
   now = () => new Date(),
+  geminiApiKey = process.env.GEMINI_API_KEY,
+  geminiModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+  geminiInputPricePerMillion = process.env.GEMINI_INPUT_PRICE_PER_MILLION,
+  geminiOutputPricePerMillion = process.env.GEMINI_OUTPUT_PRICE_PER_MILLION,
+  openAiApiKey = process.env.OPENAI_API_KEY,
+  openAiModel = process.env.OPENAI_MODEL || 'gpt-4o-mini',
+  openAiInputPricePerMillion = process.env.OPENAI_INPUT_PRICE_PER_MILLION,
+  openAiOutputPricePerMillion = process.env.OPENAI_OUTPUT_PRICE_PER_MILLION,
+  questionGenerator = createConfiguredQuestionGenerator({
+    geminiApiKey,
+    geminiModel,
+    geminiInputPricePerMillion,
+    geminiOutputPricePerMillion,
+    openAiApiKey,
+    openAiModel,
+    openAiInputPricePerMillion: openAiInputPricePerMillion,
+    openAiOutputPricePerMillion: openAiOutputPricePerMillion,
+  }),
+  generationLimiter,
 } = {}) {
   const app = express();
 
@@ -69,6 +89,8 @@ function createApp({
       authTokenSecret,
       getCollection,
       now,
+      questionGenerator,
+      generationLimiter,
     }),
   );
   app.use(
